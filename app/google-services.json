@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "488048743784",
+    "firebase_url": "https://ml-kit-research.firebaseio.com",
+    "project_id": "ml-kit-research",
+    "storage_bucket": "ml-kit-research.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:488048743784:android:f47411b847ea4032",
+        "android_client_info": {
+          "package_name": "com.gromyk.mlkit"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "488048743784-mdi2ci0c3adpjlukgrj1t600m9nq537d.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.gromyk.mlkit",
+            "certificate_hash": "2104848c976658c374b53d47d23b2d81752f1dfb"
+          }
+        },
+        {
+          "client_id": "488048743784-mnlu4337bs1fekfh9hffd7fcvqcj9hu4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD9n48vkiunzGu-bUiouLT9z6tOLTXWyMs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "488048743784-mnlu4337bs1fekfh9hffd7fcvqcj9hu4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
