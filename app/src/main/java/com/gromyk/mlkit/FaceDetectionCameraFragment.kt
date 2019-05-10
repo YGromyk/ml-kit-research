@@ -101,7 +101,7 @@ class FaceDetectionCameraFragment : Fragment() {
             textureView.surfaceTexture = it.surfaceTexture
             bufferRotation = it.rotationDegrees
             val rotation = getDisplaySurfaceRotation(textureView.display)
-            updateTransform(textureView, rotation, it.textureSize, textureViewDimens!!)
+            updateTransform(textureView, rotation, it.textureSize, textureViewDimens)
         }
 
 
@@ -138,96 +138,74 @@ class FaceDetectionCameraFragment : Fragment() {
         textureView: TextureView?, rotation: Int?, newBufferDimens: Size,
         newTextureViewDimens: Size
     ) {
-        // This should happen anyway, but now the linter knows
-        val textureView = textureView ?: return
-        textureViewRotation = getDisplaySurfaceRotation(textureView.display) ?: 0
-        bufferDimens = newBufferDimens
-        textureViewDimens = newTextureViewDimens
-        if (rotation == textureViewRotation &&
-            Objects.equals(newBufferDimens, bufferDimens) &&
-            Objects.equals(newTextureViewDimens, textureViewDimens)
-        ) {
-            // Nothing has changed, no need to transform output again
-            return
-        }
-
-        if (rotation == null) {
-            // Invalid rotation - wait for valid inputs before setting matrix
-            return
-        } else {
-            // Update internal field with new inputs
-            textureViewRotation = rotation
-        }
-
-        if (newBufferDimens.width == 0 || newBufferDimens.height == 0) {
-            // Invalid buffer dimens - wait for valid inputs before setting matrix
-            return
-        } else {
-            // Update internal field with new inputs
+        if (textureView != null) {
+            textureViewRotation = getDisplaySurfaceRotation(textureView.display) ?: 0
             bufferDimens = newBufferDimens
-        }
-
-        if (newTextureViewDimens.width == 0 || newTextureViewDimens.height == 0) {
-            // Invalid view finder dimens - wait for valid inputs before setting matrix
-            return
-        } else {
-            // Update internal field with new inputs
             textureViewDimens = newTextureViewDimens
+            if (rotation == textureViewRotation &&
+                Objects.equals(newBufferDimens, bufferDimens) &&
+                Objects.equals(newTextureViewDimens, textureViewDimens)
+            ) {
+                // Nothing has changed, no need to transform output again
+                return
+            }
+
+            if (rotation == null) {
+                // Invalid rotation - wait for valid inputs before setting matrix
+                return
+            } else {
+                // Update internal field with new inputs
+                textureViewRotation = rotation
+            }
+
+            if (newBufferDimens.width == 0 || newBufferDimens.height == 0) {
+                // Invalid buffer dimens - wait for valid inputs before setting matrix
+                return
+            } else {
+                // Update internal field with new inputs
+                bufferDimens = newBufferDimens
+            }
+            if (newTextureViewDimens.width == 0 || newTextureViewDimens.height == 0) {
+                // Invalid view finder dimens - wait for valid inputs before setting matrix
+                return
+            } else {
+                // Update internal field with new inputs
+                textureViewDimens = newTextureViewDimens
+            }
+
+            val matrix = Matrix()
+
+            // Compute the center of the view finder
+            val centerX = textureViewDimens.width / 2f
+            val centerY = textureViewDimens.height / 2f
+
+            // Correct preview output to account for display rotation
+            matrix.postRotate(-textureViewRotation!!.toFloat(), centerX, centerY)
+
+            // Buffers are rotated relative to the device's 'natural' orientation: swap width and height
+            val bufferRatio = bufferDimens.height / bufferDimens.width.toFloat()
+
+            val scaledWidth: Int
+            val scaledHeight: Int
+            // Match longest sides together -- i.e. apply center-crop transformation
+            if (textureViewDimens.width > textureViewDimens.height) {
+                scaledHeight = textureViewDimens.width
+                scaledWidth = Math.round(textureViewDimens.width * bufferRatio)
+            } else {
+                scaledHeight = textureViewDimens.height
+                scaledWidth = Math.round(textureViewDimens.height * bufferRatio)
+            }
+
+            // Compute the relative scale value
+            val xScale = scaledWidth / textureViewDimens.width.toFloat()
+            val yScale = scaledHeight / textureViewDimens.height.toFloat()
+
+            // Scale input buffers to fill the view finder
+            matrix.preScale(xScale, yScale, centerX, centerY)
+
+            // Finally, apply transformations to our TextureView
+            textureView.setTransform(matrix)
         }
-
-        val matrix = Matrix()
-
-        // Compute the center of the view finder
-        val centerX = textureViewDimens.width / 2f
-        val centerY = textureViewDimens.height / 2f
-
-        // Correct preview output to account for display rotation
-        matrix.postRotate(-textureViewRotation!!.toFloat(), centerX, centerY)
-
-        // Buffers are rotated relative to the device's 'natural' orientation: swap width and height
-        val bufferRatio = bufferDimens.height / bufferDimens.width.toFloat()
-
-        val scaledWidth: Int
-        val scaledHeight: Int
-        // Match longest sides together -- i.e. apply center-crop transformation
-        if (textureViewDimens.width > textureViewDimens.height) {
-            scaledHeight = textureViewDimens.width
-            scaledWidth = Math.round(textureViewDimens.width * bufferRatio)
-        } else {
-            scaledHeight = textureViewDimens.height
-            scaledWidth = Math.round(textureViewDimens.height * bufferRatio)
-        }
-
-        // Compute the relative scale value
-        val xScale = scaledWidth / textureViewDimens.width.toFloat()
-        val yScale = scaledHeight / textureViewDimens.height.toFloat()
-
-        // Scale input buffers to fill the view finder
-        matrix.preScale(xScale, yScale, centerX, centerY)
-
-        // Finally, apply transformations to our TextureView
-        textureView.setTransform(matrix)
-    }
-
-    private fun updateTransform1() {
-        val matrix = Matrix()
-
-        // Compute the center of the view finder
-        val centerX = textureView.width / 2f
-        val centerY = textureView.height / 2f
-
-        // Correct preview output to account for display rotation
-        val rotationDegrees = when (textureView.display.rotation) {
-            Surface.ROTATION_0 -> 0
-            Surface.ROTATION_90 -> 90
-            Surface.ROTATION_180 -> 180
-            Surface.ROTATION_270 -> 270
-            else -> return
-        }
-        matrix.postRotate(-rotationDegrees.toFloat(), centerX, centerY)
-
-        // Finally, apply transformations to our TextureView
-        textureView.setTransform(matrix)
     }
 
     override fun onRequestPermissionsResult(
