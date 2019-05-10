@@ -3,7 +3,9 @@ package com.gromyk.mlkit
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.graphics.SurfaceTexture
 import android.os.Bundle
 import android.util.DisplayMetrics
 import android.util.Log
@@ -19,10 +21,17 @@ import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import com.google.firebase.ml.vision.FirebaseVision
+import com.google.firebase.ml.vision.common.FirebaseVisionImage
+import com.google.firebase.ml.vision.face.FirebaseVisionFace
+import com.google.firebase.ml.vision.face.FirebaseVisionFaceDetectorOptions
+import kotlinx.android.synthetic.main.fragment_face_detection_camera.*
 import java.util.*
+import kotlin.concurrent.timerTask
+
 
 class FaceDetectionCameraFragment : Fragment() {
-    private var lensFacing = CameraX.LensFacing.BACK
+    private var lensFacing = CameraX.LensFacing.FRONT
 
     private lateinit var container: ConstraintLayout
     private lateinit var textureView: TextureView
@@ -33,6 +42,17 @@ class FaceDetectionCameraFragment : Fragment() {
 
     /** Internal variable used to keep track of the use-case's output rotation */
     private var bufferRotation: Int = 0
+
+    private var isPhotoInProcessing = false
+    private lateinit var currentFrame: Bitmap
+
+    private val options: FirebaseVisionFaceDetectorOptions = FirebaseVisionFaceDetectorOptions.Builder()
+        .setPerformanceMode(FirebaseVisionFaceDetectorOptions.FAST)
+        .setContourMode(FirebaseVisionFaceDetectorOptions.ALL_CONTOURS)
+        .enableTracking()
+        .build()
+
+    private val detector = FirebaseVision.getInstance().getVisionFaceDetector(options)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,6 +79,12 @@ class FaceDetectionCameraFragment : Fragment() {
                 startCamera()
             }
         }
+        val timer = Timer()
+        timer.schedule(
+            timerTask { runFaceContourDetection(textureView.bitmap ?: return@timerTask) },
+            1L,
+            10L
+        )
     }
 
     override fun onDestroyView() {
@@ -92,19 +118,35 @@ class FaceDetectionCameraFragment : Fragment() {
 
         preview.setOnPreviewOutputUpdateListener {
             val textureView = textureView
-
             // To update the SurfaceTexture, we have to remove it and re-add it
             val parent = textureView.parent as ViewGroup
             parent.removeView(textureView)
             parent.addView(textureView, 0)
-
-            textureView.surfaceTexture = it.surfaceTexture
+            val texture = it.surfaceTexture
+            textureView.surfaceTexture = texture
             bufferRotation = it.rotationDegrees
             val rotation = getDisplaySurfaceRotation(textureView.display)
             updateTransform(textureView, rotation, it.textureSize, textureViewDimens)
         }
 
 
+        textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+            override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture?, width: Int, height: Int) {
+
+            }
+
+            override fun onSurfaceTextureDestroyed(surface: SurfaceTexture?): Boolean {
+                return false
+            }
+
+            override fun onSurfaceTextureAvailable(surface: SurfaceTexture?, width: Int, height: Int) {
+                currentFrame = textureView.bitmap
+            }
+
+            override fun onSurfaceTextureUpdated(surface: SurfaceTexture?) {
+            }
+
+        }
         // Apply declared configs to CameraX using the same lifecycle owner
         CameraX.bindToLifecycle(this, preview)
     }
@@ -241,6 +283,43 @@ class FaceDetectionCameraFragment : Fragment() {
                 return false
         }
         return true
+    }
+
+
+    private fun runFaceContourDetection(imageRow: Bitmap) {
+        Log.d("runFaceContourDetection", "received new bitmap $imageRow")
+        if(isPhotoInProcessing) return
+        isPhotoInProcessing = true
+        val image = FirebaseVisionImage.fromBitmap(imageRow)
+        detector.detectInImage(image)
+            .addOnSuccessListener { faces ->
+                processFaceContourDetectionResult(faces)
+                isPhotoInProcessing = false
+            }
+            .addOnFailureListener { e ->
+                // Task failed with an exception
+                e.printStackTrace()
+            }
+
+    }
+
+    private fun processFaceContourDetectionResult(faces: List<FirebaseVisionFace>) {
+        // Task completed successfully
+        graphicOverlay.clear()
+        if (faces.isEmpty()) {
+            showToast("No face found")
+            return
+        }
+        for (i in 0 until faces.size) {
+            val face = faces[i]
+            val faceGraphic = FaceContourGraphic(graphicOverlay);
+            graphicOverlay.add(faceGraphic)
+            faceGraphic.updateFace(face)
+        }
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
     }
 
     companion object {
