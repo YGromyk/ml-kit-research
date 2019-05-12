@@ -3,9 +3,7 @@ package com.gromyk.mlkit
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.graphics.Matrix
-import android.graphics.SurfaceTexture
 import android.os.Bundle
 import android.util.DisplayMetrics
 import android.util.Log
@@ -33,30 +31,29 @@ import kotlin.concurrent.timerTask
 class FaceDetectionCameraFragment : Fragment() {
     private var lensFacing = CameraX.LensFacing.FRONT
 
-    private lateinit var container: ConstraintLayout
-    private lateinit var textureView: TextureView
-
-    var textureViewRotation: Int? = null
-    var bufferDimens: Size = Size(0, 0)
-    var textureViewDimens: Size = Size(0, 0)
+    private var textureViewRotation: Int? = null
+    private var bufferDimens: Size = Size(0, 0)
+    private var textureViewDimens: Size = Size(0, 0)
 
     /** Internal variable used to keep track of the use-case's output rotation */
     private var bufferRotation: Int = 0
 
+    private lateinit var timer: Timer
+
     private var isPhotoInProcessing = false
-    private lateinit var currentFrame: Bitmap
+    private lateinit var faceGraphic: FaceContourGraphic
 
     private val options: FirebaseVisionFaceDetectorOptions = FirebaseVisionFaceDetectorOptions.Builder()
-        .setPerformanceMode(FirebaseVisionFaceDetectorOptions.FAST)
-        .setContourMode(FirebaseVisionFaceDetectorOptions.ALL_CONTOURS)
-        .enableTracking()
+        .setPerformanceMode(FirebaseVisionFaceDetectorOptions.ACCURATE)
+        .setContourMode(FirebaseVisionFaceDetectorOptions.ALL_CLASSIFICATIONS)
+        .setClassificationMode(FirebaseVisionFaceDetectorOptions.ALL_CLASSIFICATIONS)
+        .setMinFaceSize(0.15f)
         .build()
 
     private val detector = FirebaseVision.getInstance().getVisionFaceDetector(options)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Mark this as a retain fragment, so the lifecycle does not get restarted on config change
         retainInstance = true
     }
 
@@ -70,55 +67,63 @@ class FaceDetectionCameraFragment : Fragment() {
     }
 
     private fun initView() {
-        container = view as ConstraintLayout
-        textureView = container.findViewById(R.id.textureView)
-
         textureView.apply {
+            faceGraphic = FaceContourGraphic(graphicOverlay).apply {
+                isDrawBoundingBox = true
+                isDrawFaceContour = true
+                isDrawSmilingProbability = true
+            }
             post {
                 initControls()
                 startCamera()
             }
         }
-        val timer = Timer()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        timer = Timer()
         timer.schedule(
-            timerTask { runFaceContourDetection(textureView.bitmap ?: return@timerTask) },
+            timerTask {
+                runFaceContourDetection(
+                    FirebaseVisionImage.fromBitmap(
+                        textureView.bitmap ?: return@timerTask
+                    )
+                )
+            },
             1L,
-            10L
+            500L
         )
+    }
+
+    override fun onPause() {
+        timer.cancel()
+        super.onPause()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        // Turn off all camera operations when we navigate away
         CameraX.unbindAll()
     }
 
     private fun startCamera() {
-
-        // Make sure that there are no other use cases bound to CameraX
         CameraX.unbindAll()
-
         val metrics = DisplayMetrics().also { textureView.display.getRealMetrics(it) }
-        val screenSize = Size(metrics.widthPixels, metrics.heightPixels)
+        //val screenSize = Size(metrics.widthPixels, metrics.heightPixels)
+        val screenSize = Size(720, 1280)
         val screenAspectRatio = Rational(metrics.widthPixels, metrics.heightPixels)
-        Log.d(javaClass.simpleName, "Metrics: ${metrics.widthPixels} x ${metrics.heightPixels}")
 
-        // Set up the view finder use case to display camera preview
-        val previewConfig = PreviewConfig.Builder().apply {
-            setLensFacing(lensFacing)
-            // We request a specific resolution matching screen size
-            setTargetResolution(screenSize)
-            // We also provide an aspect ratio in case the exact resolution is not available
-            setTargetAspectRatio(screenAspectRatio)
-            setTargetRotation(textureView.display.rotation)
-        }.build()
+        val previewConfig = PreviewConfig.Builder()
+            .setLensFacing(lensFacing)
+            .setTargetResolution(screenSize)
+            .setTargetAspectRatio(screenAspectRatio)
+            .setTargetRotation(textureView.display.rotation)
+            .build()
 
-        // Use the auto-fit preview builder to automatically handle size and orientation changes
         val preview = Preview(previewConfig)
 
         preview.setOnPreviewOutputUpdateListener {
             val textureView = textureView
-            // To update the SurfaceTexture, we have to remove it and re-add it
             val parent = textureView.parent as ViewGroup
             parent.removeView(textureView)
             parent.addView(textureView, 0)
@@ -128,38 +133,18 @@ class FaceDetectionCameraFragment : Fragment() {
             val rotation = getDisplaySurfaceRotation(textureView.display)
             updateTransform(textureView, rotation, it.textureSize, textureViewDimens)
         }
-
-
-        textureView.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-            override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture?, width: Int, height: Int) {
-
-            }
-
-            override fun onSurfaceTextureDestroyed(surface: SurfaceTexture?): Boolean {
-                return false
-            }
-
-            override fun onSurfaceTextureAvailable(surface: SurfaceTexture?, width: Int, height: Int) {
-                currentFrame = textureView.bitmap
-            }
-
-            override fun onSurfaceTextureUpdated(surface: SurfaceTexture?) {
-            }
-
-        }
-        // Apply declared configs to CameraX using the same lifecycle owner
         CameraX.bindToLifecycle(this, preview)
     }
 
     @SuppressLint("RestrictedApi")
     private fun initControls() {
-        container.findViewById<ConstraintLayout>(R.id.camera_ui_container)?.let {
-            container.removeView(it)
+        viewContainer.findViewById<ConstraintLayout>(R.id.camera_ui_container)?.let {
+            viewContainer.removeView(it)
         }
 
-        val controlsView: View = View.inflate(requireContext(), R.layout.camera_controls_container, container)
+        val controlsView: View = View.inflate(requireContext(), R.layout.camera_controls_container, viewContainer)
 
-        controlsView.findViewById<ImageButton>(R.id.camera_switch_button).setOnClickListener {
+        controlsView.findViewById<ImageButton>(R.id.cameraSwitchButton).setOnClickListener {
             lensFacing =
                 if (CameraX.LensFacing.FRONT == lensFacing)
                     CameraX.LensFacing.BACK
@@ -167,11 +152,10 @@ class FaceDetectionCameraFragment : Fragment() {
                     CameraX.LensFacing.FRONT
 
             try {
-                // Only bind use cases if we can query a camera with this orientation
                 CameraX.getCameraWithLensFacing(lensFacing)
+                graphicOverlay.clear()
                 startCamera()
-            } catch (exc: Exception) {
-                // Do nothing
+            } catch (exc: Throwable) {
             }
         }
     }
@@ -257,11 +241,7 @@ class FaceDetectionCameraFragment : Fragment() {
             if (allPermissionsGranted()) {
                 textureView.post { startCamera() }
             } else {
-                Toast.makeText(
-                    activity,
-                    "Permissions not granted by the user.",
-                    Toast.LENGTH_SHORT
-                ).show()
+                showToast("Permissions not granted by the user.")
             }
         }
     }
@@ -276,6 +256,7 @@ class FaceDetectionCameraFragment : Fragment() {
         }
     }
 
+
     private fun allPermissionsGranted(): Boolean {
         for (permission in REQUIRED_PERMISSIONS) {
             val permissionStatus = ContextCompat.checkSelfPermission(activity!!, permission)
@@ -285,22 +266,15 @@ class FaceDetectionCameraFragment : Fragment() {
         return true
     }
 
-
-    private fun runFaceContourDetection(imageRow: Bitmap) {
-        Log.d("runFaceContourDetection", "received new bitmap $imageRow")
-        if(isPhotoInProcessing) return
+    private fun runFaceContourDetection(image: FirebaseVisionImage) {
+        if (isPhotoInProcessing) return
+        Log.d(DETECTION_TIME_TAG, "Image is started to proceed ${System.currentTimeMillis()}")
         isPhotoInProcessing = true
-        val image = FirebaseVisionImage.fromBitmap(imageRow)
         detector.detectInImage(image)
             .addOnSuccessListener { faces ->
-                processFaceContourDetectionResult(faces)
+                processFaceContourDetectionResult(faces ?: emptyList())
                 isPhotoInProcessing = false
             }
-            .addOnFailureListener { e ->
-                // Task failed with an exception
-                e.printStackTrace()
-            }
-
     }
 
     private fun processFaceContourDetectionResult(faces: List<FirebaseVisionFace>) {
@@ -310,12 +284,12 @@ class FaceDetectionCameraFragment : Fragment() {
             showToast("No face found")
             return
         }
-        for (i in 0 until faces.size) {
-            val face = faces[i]
-            val faceGraphic = FaceContourGraphic(graphicOverlay);
+        for (face in faces) {
             graphicOverlay.add(faceGraphic)
             faceGraphic.updateFace(face)
         }
+        Log.d(DETECTION_TIME_TAG, "Image proceeded ${System.currentTimeMillis()}")
+        Log.d(DETECTION_TIME_TAG, "____________________________")
     }
 
     private fun showToast(message: String) {
@@ -323,11 +297,11 @@ class FaceDetectionCameraFragment : Fragment() {
     }
 
     companion object {
+        private const val DETECTION_TIME_TAG = "Detection time"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
 
         fun newInstance() = FaceDetectionCameraFragment().apply {
-
         }
 
         fun getDisplaySurfaceRotation(display: Display?) = when (display?.rotation) {

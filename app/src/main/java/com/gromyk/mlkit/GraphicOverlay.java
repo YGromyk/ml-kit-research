@@ -177,8 +177,8 @@ public class GraphicOverlay extends View {
 
         synchronized (lock) {
             if ((previewWidth != 0) && (previewHeight != 0)) {
-                widthScaleFactor = (float) canvas.getWidth() / (float) previewWidth;
-                heightScaleFactor = (float) canvas.getHeight() / (float) previewHeight;
+                widthScaleFactor = (float) getWidth() / (float) previewWidth;
+                heightScaleFactor = (float) getHeight() / (float) previewHeight;
             }
 
             for (Graphic graphic : graphics) {
