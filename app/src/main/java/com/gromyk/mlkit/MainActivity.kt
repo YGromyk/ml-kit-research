@@ -14,7 +14,7 @@ class MainActivity : AppCompatActivity() {
     private fun initFragment() {
         val fragment = FaceDetectionCameraFragment.newInstance()
         supportFragmentManager.beginTransaction()
-            .add(R.id.container, fragment, null)
+            .add(R.id.fragmentContainer, fragment, null)
             .commit()
     }
 }
