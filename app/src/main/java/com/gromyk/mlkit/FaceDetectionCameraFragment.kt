@@ -52,6 +52,8 @@ class FaceDetectionCameraFragment : Fragment() {
 
     private val detector = FirebaseVision.getInstance().getVisionFaceDetector(options)
 
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         retainInstance = true
