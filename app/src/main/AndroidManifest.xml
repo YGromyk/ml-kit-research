@@ -3,6 +3,8 @@
         package="com.gromyk.mlkit">
 
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
             android:name=".App"
             android:allowBackup="true"
